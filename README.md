@@ -1,35 +1,35 @@
 # 🚀 Taskify - FastAPI + MongoDB Task Manager
 
-A modern, RESTful API for managing tasks built with FastAPI and MongoDB. Features full CRUD functionality, comprehensive test suite, automatic documentation via Swagger UI, and robust async architecture.
+A modern, high-performance RESTful API for managing tasks built with FastAPI and MongoDB. Features comprehensive CRUD functionality, advanced search with regex pattern matching, 40 unit tests with 100% pass rate, automatic documentation via Swagger UI, and production-ready async architecture.
 
 ## 📋 Table of Contents
 
 - [Features](#features)
-- [Tech Stack](#tech-stack)
+- [Tech Stack](#tech-stack) 
 - [Project Structure](#project-structure)
 - [Getting Started](#getting-started)
 - [Testing](#testing)
 - [API Endpoints](#api-endpoints)
 - [Usage Examples](#usage-examples)
-- [Docker Setup](#docker-setup)
 - [Development](#development)
 - [Contributing](#contributing)
 
 ## ✨ Features
 
-- ✅ **Create Tasks** - Add new tasks with title, description, and status
-- 📥 **Get Tasks** - Retrieve all tasks or filter by specific criteria
+- ✅ **Create Tasks** - Add new tasks with title, description, and status validation
+- 📥 **Get Tasks** - Retrieve all tasks with comprehensive filtering capabilities
 - 📄 **Get Task by ID** - Fetch individual task details
 - ✏️ **Update Tasks** - Modify existing tasks with PATCH support (partial updates)
 - 🔄 **Update Status** - Dedicated endpoint for status-only updates
 - ❌ **Delete Tasks** - Remove tasks from the system
 - 🔍 **Filter by Status** - Find tasks by their status (pending, in_progress, completed, cancelled)
+- 🔎 **Search Tasks** - Advanced search by title and description with regex support
 - 📚 **Auto Documentation** - Interactive Swagger UI at `/docs`
-- 🧪 **Comprehensive Testing** - 30 unit tests with 100% pass rate
+- 🧪 **Comprehensive Testing** - **40 unit tests** with 100% pass rate
 - ⚡ **Async Support** - Built with async/await for high performance
 - 🛡️ **Error Handling** - Comprehensive error responses with proper HTTP status codes
 - 🎯 **Status Validation** - Enum-based status validation with Pydantic
-- 🐳 **Docker Ready** - Containerization support (implementation pending)
+- 🌐 **RESTful Design** - Follows REST conventions with semantic HTTP status codes
 
 ## 🛠️ Tech Stack
 
@@ -51,16 +51,14 @@ taskify/
 │   ├── routes.py        # API endpoints and route handlers
 │   ├── schemas.py       # Pydantic models with TaskStatus enum
 │   └── database.py      # MongoDB connection and configuration
-├── tests/               # Comprehensive test suite
+├── tests/               # Comprehensive test suite (40 tests)
 │   ├── __init__.py
 │   ├── conftest.py      # Test fixtures and mocking utilities
-│   ├── test_routes.py   # API endpoint tests (17 test classes)
-│   └── test_schemas.py  # Pydantic model validation tests
+│   ├── test_routes.py   # API endpoint tests (27 tests across 7 test classes)
+│   └── test_schemas.py  # Pydantic model validation tests (13 tests)
 ├── env/                 # Virtual environment
 ├── requirements.txt     # Python dependencies
 ├── pytest.ini          # Pytest configuration
-├── Dockerfile          # Docker container configuration (pending)
-├── docker-compose.yml  # Multi-container setup (pending)
 ├── .env               # Environment variables
 ├── .gitignore         # Git ignore rules
 └── README.md          # Project documentation
@@ -120,19 +118,20 @@ taskify/
 
 ## 🧪 Testing
 
-This project includes a comprehensive test suite with **30 unit tests** covering all API endpoints and edge cases.
+This project includes a comprehensive test suite with **40 unit tests** covering all API endpoints, search functionality, and edge cases.
 
 ### Running Tests
 
 ```bash
-# Run all tests
+# Run all tests (40 tests)
 pytest
 
 # Run with verbose output
 pytest -v
 
 # Run specific test file
-pytest tests/test_routes.py
+pytest tests/test_routes.py    # 27 API endpoint tests
+pytest tests/test_schemas.py   # 13 schema validation tests
 
 # Run tests with coverage (if coverage installed)
 pytest --cov=app
@@ -144,26 +143,37 @@ pytest -n auto
 ### Test Coverage
 
 - ✅ **API Endpoints**: All CRUD operations with success and error scenarios
+- ✅ **Search Functionality**: Text search with case-insensitive regex matching
 - ✅ **Status Validation**: TaskStatus enum validation with invalid inputs
 - ✅ **Error Handling**: 400, 404, 422 HTTP status code responses
 - ✅ **Database Operations**: Mocked MongoDB operations with async iteration
 - ✅ **Schema Validation**: Pydantic model validation with edge cases
+- ✅ **Query Parameters**: Search query validation and error handling
 
 ### Test Structure
 
 ```
 tests/
 ├── conftest.py          # Fixtures, AsyncClient, MockTasksCollection
-├── test_routes.py       # 17 test classes covering all endpoints
-└── test_schemas.py      # Pydantic model validation tests
+├── test_routes.py       # 27 tests across 7 test classes
+│   ├── TestCreateTask          # Task creation tests
+│   ├── TestGetTasks           # Retrieve all tasks tests  
+│   ├── TestGetTaskById        # Individual task retrieval tests
+│   ├── TestUpdateTask         # Task update tests
+│   ├── TestUpdateTaskStatus   # Status-only update tests
+│   ├── TestDeleteTask         # Task deletion tests
+│   └── TestSearchTasks        # Search functionality tests (10 tests)
+└── test_schemas.py      # 13 Pydantic model validation tests
 ```
 
 ### Key Testing Features
 
 - **AsyncClient**: httpx-based async API testing
 - **Database Mocking**: Custom MockTasksCollection with async iterator support  
+- **Search Testing**: Comprehensive search functionality validation
 - **Fixture Management**: Comprehensive test data fixtures
 - **Async Testing**: Full pytest-asyncio integration
+- **Error Scenarios**: Complete error handling validation
 
 ## 📚 API Endpoints
 
@@ -177,7 +187,8 @@ tests/
 | `PATCH` | `/task/{id}` | Update task by ID (partial) | `200`, `400`, `404`, `422` |
 | `PATCH` | `/task/{id}/status` | Update task status only | `200`, `400`, `404`, `422` |
 | `DELETE` | `/task/{id}` | Delete task by ID | `204`, `400`, `404` |
-| `GET` | `/task/filter/{status}` | Filter tasks by status | `200`, `400` |
+| `GET` | `/task/filter/{status}` | Filter tasks by status | `200`, `422` |
+| `GET` | `/task/search?q={query}` | Search tasks by title/description | `200`, `404`, `422` |
 
 ### Task Schema
 
@@ -252,40 +263,68 @@ curl -X DELETE "http://localhost:8000/api/v1/task/6507c7f4e1234567890abcde"
 curl -X GET "http://localhost:8000/api/v1/task/filter/completed"
 ```
 
-## 🐳 Docker Setup
+### Search Tasks
+```bash
+# Search by title or description (case-insensitive)
+curl -X GET "http://localhost:8000/api/v1/task/search?q=documentation"
 
-> **Note**: Docker configuration is planned for future implementation.
+# Search with special characters (URL encoded)
+curl -X GET "http://localhost:8000/api/v1/task/search?q=bug%20%23123"
 
-### Using Docker Compose (Coming Soon)
+# Partial matching (searches both title and description)
+curl -X GET "http://localhost:8000/api/v1/task/search?q=fastapi"
+```
 
-1. **Build and start services**
-   ```bash
-   docker-compose up --build
-   ```
+### Response Examples
 
-2. **Access the application**
-   - API: `http://localhost:8000`
-   - Docs: `http://localhost:8000/docs`
+#### Successful Task Creation (201)
+```json
+{
+  "id": "6507c7f4e1234567890abcde",
+  "title": "Complete project documentation",
+  "description": "Write comprehensive README and API docs",
+  "status": "pending",
+  "created_at": "2025-08-07T10:30:00Z",
+  "updated_at": "2025-08-07T10:30:00Z"
+}
+```
 
-3. **Stop services**
-   ```bash
-   docker-compose down
-   ```
+#### Search Results (200)
+```json
+[
+  {
+    "id": "6507c7f4e1234567890abcde",
+    "title": "API Documentation",
+    "description": "Write FastAPI documentation",
+    "status": "pending",
+    "created_at": "2025-08-07T10:30:00Z",
+    "updated_at": "2025-08-07T10:30:00Z"
+  }
+]
+```
 
-### Using Docker Only (Coming Soon)
+#### No Search Results (404)
+```json
+{
+  "detail": "No tasks found matching search query: 'nonexistent'"
+}
+```
 
-1. **Start MongoDB**
-   ```bash
-   docker run -d --name taskify-mongo -p 27017:27017 mongo:latest
-   ```
+#### Error Response (422)
+```json
+{
+  "detail": [
+    {
+      "type": "string_too_short",
+      "loc": ["query", "q"],
+      "msg": "String should have at least 1 character",
+      "input": ""
+    }
+  ]
+}
+```
 
-2. **Build and run the app**
-   ```bash
-   docker build -t taskify-api .
-   docker run -d --name taskify-app -p 8000:8000 --link taskify-mongo:mongo taskify-api
-   ```
-
-## 🔧 Development
+##  Development
 
 ### Code Style
 - Follow PEP 8 guidelines
@@ -323,19 +362,39 @@ curl -X GET "http://localhost:8000/api/v1/task/filter/completed"
 
 ### Running Tests
 ```bash
-# Run all tests (30 tests)
+# Run all tests (40 tests total)
 pytest
 
 # Run with verbose output
 pytest -v
 
 # Run specific test categories
-pytest tests/test_routes.py    # API endpoint tests
-pytest tests/test_schemas.py   # Schema validation tests
+pytest tests/test_routes.py    # 27 API endpoint tests
+pytest tests/test_schemas.py   # 13 schema validation tests
+
+# Run specific test classes
+pytest tests/test_routes.py::TestSearchTasks -v  # Search functionality tests
 
 # Check test coverage
 pytest --cov=app --cov-report=html
 ```
+
+## 🌟 Recent Updates & Achievements
+
+### ✅ Latest Enhancements (August 2025)
+- **Search Functionality**: Added comprehensive search endpoint with regex support
+- **Improved Error Handling**: Search returns 404 when no results found (better than empty array)
+- **Enhanced Testing**: Expanded test suite from 30 to 40 tests
+- **Search Tests**: Added 10 comprehensive search tests covering all scenarios
+- **Better Validation**: Enhanced query parameter validation with proper error messages
+- **Documentation**: Updated README with complete API documentation and examples
+
+### 🎯 Quality Metrics
+- **Test Coverage**: 40 comprehensive unit tests with 100% pass rate
+- **API Endpoints**: 8 fully documented REST endpoints  
+- **Error Handling**: Complete HTTP status code coverage (200, 201, 204, 400, 404, 422)
+- **Async Architecture**: Full async/await implementation for optimal performance
+- **Code Quality**: Type hints, proper exception handling, and comprehensive docstrings
 
 ## 🌟 Future Enhancements
 
@@ -345,25 +404,34 @@ pytest --cov=app --cov-report=html
 - [ ] Task categories and tags
 - [ ] Due dates and reminders
 - [ ] Task priority levels
-- [ ] Bulk operations
-- [ ] Search functionality
+- [ ] Bulk operations (bulk create, update, delete)
+- [ ] Advanced search filters (date range, status combination)
 - [ ] API rate limiting
-- [ ] CI/CD pipeline
-- [ ] Performance monitoring
+- [ ] CI/CD pipeline with GitHub Actions
+- [ ] Performance monitoring and logging
 - [ ] Database indexes for optimization
+- [ ] WebSocket real-time updates
+- [ ] Task assignment to users
+- [ ] Task comments and history
 
 ## ✅ Completed Features
 
 - [x] Full CRUD API with FastAPI
-- [x] MongoDB integration with Motor
+- [x] MongoDB integration with Motor async driver
 - [x] Pydantic v2 models with enum validation
-- [x] Comprehensive test suite (30 tests, 100% pass rate)
-- [x] Async/await architecture
+- [x] **Comprehensive test suite (40 tests, 100% pass rate)**
+- [x] **Advanced search functionality with regex support**
+- [x] **Case-insensitive text search across title and description**
+- [x] **Proper HTTP status codes (404 for no search results)**
+- [x] Async/await architecture throughout
 - [x] PATCH endpoints for partial updates
 - [x] Status-specific update endpoint
-- [x] Error handling with proper HTTP status codes
-- [x] Automatic API documentation
-- [x] Environment configuration
+- [x] Comprehensive error handling with descriptive messages
+- [x] Automatic API documentation with OpenAPI/Swagger
+- [x] Environment configuration with python-dotenv
+- [x] Query parameter validation
+- [x] ObjectId validation for MongoDB documents
+- [x] **Enhanced test coverage with search functionality validation**
 
 ## 🤝 Contributing
 
