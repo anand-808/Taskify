@@ -4,7 +4,7 @@ from app.schemas import (
     TaskCreate, TaskUpdate, TaskStatusUpdate, 
     TaskResponse, TaskStatus, TaskBase
 )
-from datetime import datetime
+from datetime import datetime, timezone
 
 class TestTaskStatus:
     """Test TaskStatus enum"""
@@ -106,8 +106,8 @@ class TestTaskResponse:
             "title": "Test Task",
             "description": "Test description",
             "status": TaskStatus.PENDING,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc)
         }
         response = TaskResponse(**response_data)
         assert response.id == "507f1f77bcf86cd799439011"
