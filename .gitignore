@@ -19,3 +19,6 @@ Thumbs.db
 
 # Dependencies
 node_modules/
+
+# Test Results
+.pytest_cache/
