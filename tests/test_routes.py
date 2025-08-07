@@ -2,8 +2,8 @@ import pytest
 from httpx import AsyncClient
 from unittest.mock import AsyncMock
 from bson import ObjectId
-from datetime import datetime
 from app.schemas import TaskStatus
+from datetime import datetime, timezone
 
 class TestCreateTask:
     """Test POST /api/v1/task/"""
@@ -142,7 +142,12 @@ class TestUpdateTask:
     @pytest.mark.asyncio
     async def test_update_task_not_found(self, async_client: AsyncClient, mock_tasks_collection, valid_object_id):
         """Test updating non-existent task"""
-        mock_tasks_collection.update_one.return_value = AsyncMock(matched_count=0)
+        # Create a proper mock result object with matched_count=0
+        class MockUpdateResult:
+            def __init__(self):
+                self.matched_count = 0
+        
+        mock_tasks_collection.update_one.return_value = MockUpdateResult()
         
         update_data = {"title": "Updated Title"}
         
@@ -197,7 +202,12 @@ class TestDeleteTask:
     @pytest.mark.asyncio
     async def test_delete_task_not_found(self, async_client: AsyncClient, mock_tasks_collection, valid_object_id):
         """Test deleting non-existent task"""
-        mock_tasks_collection.delete_one.return_value = AsyncMock(deleted_count=0)
+        # Create a proper mock result object with deleted_count=0
+        class MockDeleteResult:
+            def __init__(self):
+                self.deleted_count = 0
+        
+        mock_tasks_collection.delete_one.return_value = MockDeleteResult()
         
         response = await async_client.delete(f"/api/v1/task/{valid_object_id}")
         
@@ -224,3 +234,244 @@ class TestFilterTasks:
         response = await async_client.get("/api/v1/task/filter/invalid_status")
         
         assert response.status_code == 422
+
+class TestSearchTasks:
+    """Test GET /api/v1/task/search"""
+    
+    @pytest.mark.asyncio
+    async def test_search_tasks_by_title(self, async_client: AsyncClient, mock_tasks_collection):
+        """Test searching tasks by title"""
+        # Create sample tasks with different titles
+        search_results = [
+            {
+                "_id": ObjectId(),
+                "title": "Python Development Task",
+                "description": "Working on backend API",
+                "status": "pending",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc)
+            },
+            {
+                "_id": ObjectId(),
+                "title": "Python Testing Setup",
+                "description": "Configure test environment",
+                "status": "in_progress",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc)
+            }
+        ]
+        
+        # Mock the find method to return search results
+        async def search_iterator():
+            for task in search_results:
+                yield task
+        
+        mock_tasks_collection.find.return_value = search_iterator()
+        
+        response = await async_client.get("/api/v1/task/search?q=Python")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        assert data[0]["title"] == "Python Development Task"
+        assert data[1]["title"] == "Python Testing Setup"
+    
+    @pytest.mark.asyncio
+    async def test_search_tasks_by_description(self, async_client: AsyncClient, mock_tasks_collection):
+        """Test searching tasks by description"""
+        search_results = [
+            {
+                "_id": ObjectId(),
+                "title": "Backend Work",
+                "description": "FastAPI development and testing",
+                "status": "pending",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc)
+            }
+        ]
+        
+        async def search_iterator():
+            for task in search_results:
+                yield task
+        
+        mock_tasks_collection.find.return_value = search_iterator()
+        
+        response = await async_client.get("/api/v1/task/search?q=FastAPI")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["description"] == "FastAPI development and testing"
+    
+    @pytest.mark.asyncio
+    async def test_search_tasks_case_insensitive(self, async_client: AsyncClient, mock_tasks_collection):
+        """Test that search is case-insensitive"""
+        search_results = [
+            {
+                "_id": ObjectId(),
+                "title": "JavaScript Frontend",
+                "description": "React component development",
+                "status": "completed",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc)
+            }
+        ]
+        
+        async def search_iterator():
+            for task in search_results:
+                yield task
+        
+        mock_tasks_collection.find.return_value = search_iterator()
+        
+        # Test lowercase search for uppercase title
+        response = await async_client.get("/api/v1/task/search?q=javascript")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["title"] == "JavaScript Frontend"
+    
+    @pytest.mark.asyncio
+    async def test_search_tasks_partial_match(self, async_client: AsyncClient, mock_tasks_collection):
+        """Test partial string matching in search"""
+        search_results = [
+            {
+                "_id": ObjectId(),
+                "title": "Database Migration",
+                "description": "Update database schema",
+                "status": "pending",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc)
+            }
+        ]
+        
+        async def search_iterator():
+            for task in search_results:
+                yield task
+        
+        mock_tasks_collection.find.return_value = search_iterator()
+        
+        # Search for partial word "data" should match "Database"
+        response = await async_client.get("/api/v1/task/search?q=data")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert "Database" in data[0]["title"]
+    
+    @pytest.mark.asyncio
+    async def test_search_tasks_no_results(self, async_client: AsyncClient, mock_tasks_collection):
+        """Test search with no matching results"""
+        # Mock empty search results
+        async def empty_search_iterator():
+            return
+            yield  # This line will never be reached, making it an empty async iterator
+        
+        mock_tasks_collection.find.return_value = empty_search_iterator()
+        
+        response = await async_client.get("/api/v1/task/search?q=nonexistent")
+        
+        # Should return 404 when no tasks are found
+        assert response.status_code == 404
+        error_detail = response.json()
+        assert "detail" in error_detail
+        assert "No tasks found matching search query" in error_detail["detail"]
+    
+    @pytest.mark.asyncio
+    async def test_search_tasks_multiple_matches_title_and_description(self, async_client: AsyncClient, mock_tasks_collection):
+        """Test search that matches both title and description across different tasks"""
+        search_results = [
+            {
+                "_id": ObjectId(),
+                "title": "API Documentation",
+                "description": "Write comprehensive docs",
+                "status": "pending",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc)
+            },
+            {
+                "_id": ObjectId(),
+                "title": "Setup Project",
+                "description": "API development environment setup",
+                "status": "completed",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc)
+            }
+        ]
+        
+        async def search_iterator():
+            for task in search_results:
+                yield task
+        
+        mock_tasks_collection.find.return_value = search_iterator()
+        
+        # Search for "API" should match both tasks (title in first, description in second)
+        response = await async_client.get("/api/v1/task/search?q=API")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        
+        # Verify both tasks are returned
+        titles = [task["title"] for task in data]
+        assert "API Documentation" in titles
+        assert "Setup Project" in titles
+    
+    @pytest.mark.asyncio
+    async def test_search_tasks_empty_query_validation(self, async_client: AsyncClient):
+        """Test that empty search query is rejected"""
+        response = await async_client.get("/api/v1/task/search?q=")
+        
+        # FastAPI returns 422 for query validation errors
+        assert response.status_code == 422
+        error_detail = response.json()
+        assert "detail" in error_detail
+    
+    @pytest.mark.asyncio
+    async def test_search_tasks_missing_query_parameter(self, async_client: AsyncClient):
+        """Test that missing query parameter is rejected"""
+        response = await async_client.get("/api/v1/task/search")
+        
+        # FastAPI returns 422 for missing required query parameters
+        assert response.status_code == 422
+        error_detail = response.json()
+        assert "detail" in error_detail
+    
+    @pytest.mark.asyncio
+    async def test_search_tasks_whitespace_only_query(self, async_client: AsyncClient):
+        """Test that whitespace-only query returns 404 when no results found"""
+        response = await async_client.get("/api/v1/task/search?q=%20%20%20")  # URL encoded spaces
+        
+        # Whitespace-only queries should return 404 when no tasks match
+        assert response.status_code == 404
+        error_detail = response.json()
+        assert "detail" in error_detail
+        assert "No tasks found matching search query" in error_detail["detail"]
+    
+    @pytest.mark.asyncio
+    async def test_search_tasks_special_characters(self, async_client: AsyncClient, mock_tasks_collection):
+        """Test search with special characters"""
+        search_results = [
+            {
+                "_id": ObjectId(),
+                "title": "Fix bug #123",
+                "description": "Resolve issue with user authentication",
+                "status": "in_progress",
+                "created_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc)
+            }
+        ]
+        
+        async def search_iterator():
+            for task in search_results:
+                yield task
+        
+        mock_tasks_collection.find.return_value = search_iterator()
+        
+        # Search for "#123" should work
+        response = await async_client.get("/api/v1/task/search?q=%23123")  # URL encoded #123
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert "#123" in data[0]["title"]

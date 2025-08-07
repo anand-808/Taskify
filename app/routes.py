@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Query
 from typing import List
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, timezone
 from app.schemas import TaskCreate, TaskUpdate, TaskResponse, TaskStatusUpdate, TaskStatus
 from app.database import tasks_collection
 
@@ -47,7 +47,7 @@ def validate_object_id(id:str) -> ObjectId:
 @router.post("/", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(task: TaskCreate):
     """Create a new task"""
-    current_time = datetime.utcnow()
+    current_time = datetime.now(timezone.utc)
     task_dict = task.model_dump()
     task_dict.update({
         "created_at": current_time,
@@ -75,6 +75,30 @@ async def filter_tasks(status: TaskStatus):
     tasks = []
     async for task in tasks_collection.find({"status": status.value}):
         tasks.append(task_helper(task))
+    return tasks
+
+
+@router.get("/search", response_model=List[TaskResponse])
+async def search_tasks(q: str = Query(..., min_length=1, description="Search query")):
+    """Search tasks by title or description"""
+    search_regex = {"$regex": q, "$options": "i"}  # Case-insensitive search
+    query = {
+        "$or": [
+            {"title": search_regex},
+            {"description": search_regex}
+        ]
+    }
+    
+    tasks = []
+    async for task in tasks_collection.find(query):
+        tasks.append(task_helper(task))
+    
+    if not tasks:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No tasks found matching search query: '{q}'"
+        )
+    
     return tasks
 
 
@@ -107,7 +131,7 @@ async def update_task(id: str, task_update: TaskUpdate):
             detail="No fields to update"
         )
     
-    update_data["updated_at"] = datetime.utcnow()
+    update_data["updated_at"] = datetime.now(timezone.utc)
 
     result = await tasks_collection.update_one(
         {"_id": object_id},
@@ -130,7 +154,7 @@ async def update_task_status(id: str, status_update: TaskStatusUpdate):
     
     update_data = {
         "status": status_update.status,
-        "updated_at": datetime.utcnow()
+        "updated_at": datetime.now(timezone.utc)
     }
 
     result = await tasks_collection.update_one(

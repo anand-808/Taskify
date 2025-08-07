@@ -1,27 +1,18 @@
 import pytest
 import pytest_asyncio
+import httpx
 import asyncio
-from httpx import AsyncClient
-from unittest.mock import AsyncMock
+from unittest.mock import patch
 from app.main import app
-from app.database import tasks_collection
 from app.schemas import TaskStatus
 from bson import ObjectId
 from datetime import datetime, timezone
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
 
 @pytest_asyncio.fixture
 async def async_client():
     """Create async test client"""
     from fastapi.testclient import TestClient
     from httpx import AsyncClient
-    import httpx
     
     # Create transport that uses our FastAPI app
     transport = httpx.ASGITransport(app=app)
@@ -47,114 +38,98 @@ class AsyncIteratorMock:
 
 class MockMethod:
     """Mock method that supports return_value assignment"""
-    def __init__(self, method):
+    def __init__(self, method, method_name=None):
         self.method = method
+        self.method_name = method_name
+        self.return_value = None
+        self.is_find_method = method_name == 'find'
+    
+    def __call__(self, *args, **kwargs):
+        if self.return_value is not None:
+            if hasattr(self.return_value, '__call__'):
+                result = self.return_value(*args, **kwargs)
+                return result
+            return self.return_value
+        
+        # Call original method
+        return self.method(*args, **kwargs)
+
+
+class AsyncMockMethod:
+    """Async mock method that supports return_value assignment"""
+    def __init__(self, method, method_name=None):
+        self.method = method
+        self.method_name = method_name
         self.return_value = None
     
     async def __call__(self, *args, **kwargs):
         if self.return_value is not None:
-            # If return value is already awaitable, return it directly
-            if hasattr(self.return_value, '__await__'):
-                return await self.return_value
+            # If return_value is callable, call it
+            if hasattr(self.return_value, '__call__'):
+                result = self.return_value(*args, **kwargs)
+                if hasattr(result, '__await__'):
+                    return await result
+                return result
+            # If it's an AsyncMock or mock object, return it directly
             return self.return_value
+        
+        # Call original method
         return await self.method(*args, **kwargs)
 
 class MockTasksCollection:
-    """Mock tasks collection that properly handles async iteration"""
+    """Mock MongoDB collection that supports both test data and return_value patterns"""
+    
     def __init__(self):
         self._data = []
-        self.inserted_id = None
-        self.modified_count = 0
-        self.deleted_count = 0
-        
-        # Create mock method wrappers
-        self.find_one = MockMethod(self._find_one)
-        self.insert_one = MockMethod(self._insert_one)
-        self.update_one = MockMethod(self._update_one)
-        self.delete_one = MockMethod(self._delete_one)
+        self.insert_one = AsyncMockMethod(self._insert_one, 'insert_one')
+        self.find_one = AsyncMockMethod(self._find_one, 'find_one')
+        self.find = MockMethod(self._find, 'find')  # Sync method for async iteration
+        self.update_one = AsyncMockMethod(self._update_one, 'update_one')
+        self.delete_one = AsyncMockMethod(self._delete_one, 'delete_one')
     
-    def find(self, filter=None):
-        """Return async iterator mock"""
-        if filter:
-            # Simple filter simulation
-            filtered_data = [item for item in self._data if self._matches_filter(item, filter)]
-            return AsyncIteratorMock(filtered_data)
-        return AsyncIteratorMock(self._data)
-    
-    async def _find_one(self, filter):
-        """Find one document"""
-        if isinstance(filter, dict) and "_id" in filter:
-            for item in self._data:
-                if item["_id"] == filter["_id"]:
-                    return item
-        return None
+    def reset(self):
+        """Reset the mock for each test"""
+        self._data = []
+        self.insert_one.return_value = None
+        self.find_one.return_value = None
+        self.find.return_value = None
+        self.update_one.return_value = None
+        self.delete_one.return_value = None
     
     async def _insert_one(self, document):
-        """Insert one document"""
-        doc_id = ObjectId()
-        document["_id"] = doc_id
-        self._data.append(document)
-        result = AsyncMock()
-        result.inserted_id = doc_id
-        return result
+        from unittest.mock import AsyncMock
+        mock_result = AsyncMock()
+        mock_result.inserted_id = ObjectId()
+        return mock_result
     
-    async def _update_one(self, filter, update):
-        """Update one document"""
-        modified_count = 0
-        if isinstance(filter, dict) and "_id" in filter:
-            for item in self._data:
-                if item["_id"] == filter["_id"]:
-                    if "$set" in update:
-                        item.update(update["$set"])
-                    modified_count = 1
-                    break
-        result = AsyncMock()
-        result.modified_count = modified_count
-        result.matched_count = modified_count  # Some tests expect this
-        return result
+    async def _find_one(self, query):
+        return None
     
-    async def _delete_one(self, filter):
-        """Delete one document"""
-        deleted_count = 0
-        if isinstance(filter, dict) and "_id" in filter:
-            for i, item in enumerate(self._data):
-                if item["_id"] == filter["_id"]:
-                    del self._data[i]
-                    deleted_count = 1
-                    break
-        result = AsyncMock()
-        result.deleted_count = deleted_count
-        return result
+    def _find(self, query=None):
+        return AsyncIteratorMock(self._data)
     
-    def _matches_filter(self, item, filter):
-        """Simple filter matching"""
-        for key, value in filter.items():
-            if key in item and item[key] != value:
-                return False
-        return True
+    async def _update_one(self, query, update):
+        from unittest.mock import AsyncMock
+        mock_result = AsyncMock()
+        mock_result.matched_count = 1
+        return mock_result
+    
+    async def _delete_one(self, query):
+        from unittest.mock import AsyncMock
+        mock_result = AsyncMock()
+        mock_result.deleted_count = 1
+        return mock_result
 
-# Global mock instance
-mock_collection_instance = MockTasksCollection()
-
-@pytest.fixture(autouse=True)
-def mock_tasks_collection(monkeypatch):
+@pytest.fixture
+def mock_tasks_collection():
     """Mock the tasks collection for testing"""
-    # Reset the mock collection for each test
-    mock_collection_instance._data = []
-    mock_collection_instance.modified_count = 0
-    mock_collection_instance.deleted_count = 0
+    mock_collection = MockTasksCollection()
     
-    # Reset return values
-    mock_collection_instance.find_one.return_value = None
-    mock_collection_instance.insert_one.return_value = None
-    mock_collection_instance.update_one.return_value = None
-    mock_collection_instance.delete_one.return_value = None
+    with patch("app.routes.tasks_collection", mock_collection):
+        yield mock_collection
     
-    # Patch both possible import paths
-    monkeypatch.setattr("app.database.tasks_collection", mock_collection_instance)
-    monkeypatch.setattr("app.routes.tasks_collection", mock_collection_instance)
-    
-    return mock_collection_instance
+    # Reset after each test
+    mock_collection.reset()
 
 @pytest.fixture
 def sample_task_data():

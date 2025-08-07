@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from app.routes import router
+from datetime import datetime, timezone
 
 app = FastAPI(
     title="Taskify - Task Management API",
@@ -17,5 +18,9 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": "taskify-api"}
-
+    """Health check endpoint for monitoring"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": "1.0.0"
+    }
