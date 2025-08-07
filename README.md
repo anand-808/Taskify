@@ -76,8 +76,8 @@ taskify/
 
 1. **Clone the repository**
    ```bash
-   git clone <your-repo-url>
-   cd taskify
+   git clone https://github.com/anand-808/Taskify.git
+   cd Taskify
    ```
 
 2. **Create and activate virtual environment**
