@@ -71,6 +71,7 @@ taskify/
 - Python 3.13+ (tested with Python 3.13.5)
 - MongoDB (local installation or Docker)
 - Git
+- Docker (optional, for MongoDB container)
 
 ### Local Development Setup
 
@@ -101,9 +102,26 @@ taskify/
    echo "DATABASE_NAME=taskify_db" >> .env
    ```
 
-5. **Start MongoDB** (if running locally)
+5. **Start MongoDB**
+   
+   **Option A: Local MongoDB**
    ```bash
    mongod
+   ```
+   
+   **Option B: Docker MongoDB (Recommended)**
+   ```bash
+   # Run MongoDB in Docker container
+   docker run -d --name taskify-mongo -p 27017:27017 mongo:latest
+   
+   # Check if container is running
+   docker ps | grep taskify-mongo
+   
+   # Stop container when done
+   docker stop taskify-mongo
+   
+   # Start existing container
+   docker start taskify-mongo
    ```
 
 6. **Run the application**
